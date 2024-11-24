@@ -133,7 +133,7 @@ status parse_args(config &settings, int argc, char* argv[]) {
         }else if (arg == "--terminal" || arg == "-t") {
             settings.terminal= true;
 
-        } else if (arg == "--no_of_chars" || arg =="-#") {
+        } else if (arg == "--no_of_chars" || arg == "-#") {
             if (i + 1 < argc) settings.no_of_ascii = stoi(argv[++i]);
             else { cerr << "Error: No resolution specified after " << arg << endl; return err; }
 
@@ -334,7 +334,7 @@ status produce_ascii(config settings, unsigned char* data) {
 unsigned char* rotate_image(const unsigned char* img, int width, int height, int channels, double theta) {
     int new_width = width;
     int new_height = height;
-    unsigned char* rotated_img = new unsigned char[new_width * new_height * channels];
+    unsigned char* rotated_img = (unsigned char*)malloc(new_width * new_height * channels);
     
     // Center of the image
     double cx = width / 2.0;
@@ -391,7 +391,7 @@ int main(int argc, char* argv[]) {
     stat = load_and_process_image(settings, &data);
     switch(stat){
         case err: return 1;
-        case h: return 0;
+        case h: free(data); return 0;
         case def: break;
     }
 
@@ -403,8 +403,8 @@ int main(int argc, char* argv[]) {
             steady_clock::time_point start = high_resolution_clock::now();
             stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, theta));
             switch(stat) {
-                case err: return 1;
-                case h: return 0;
+                case err: free(data); return 1;
+                case h: free(data); return 0;
                 case def: break;
             }
 
@@ -415,16 +415,16 @@ int main(int argc, char* argv[]) {
         double final_theta = 2.0 * M_PI;
         stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, final_theta));
         switch(stat) {
-            case err: return 1;
-            case h: return 0;
+            case err: free(data); return 1;
+            case h: free(data); return 0;
             case def: break;
         }
 
     } else {
         stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
         switch(stat) {
-            case err: return 1;
-            case h: return 0;
+            case err: free(data); return 1;
+            case h: free(data); return 0;
             case def: break;
         }
     }
