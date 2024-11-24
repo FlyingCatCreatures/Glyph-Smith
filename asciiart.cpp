@@ -204,7 +204,8 @@ string figure_out_chars(int chars) {
     return res;
 }
 
-status retrieve_and_process_image(config& settings, unsigned char** data_out) {
+//Loads and processess image into 'data_out' according to 'settings'
+status load_and_process_image(config& settings, unsigned char** data_out) {
     int width, height, channels;
     const int comps = 1; // Grayscale
 
@@ -290,7 +291,7 @@ int main(int argc, char* argv[]) {
     if (settings.invert) reverse(ascii_chars.begin(), ascii_chars.end());
     
     unsigned char* data = nullptr;
-    stat = retrieve_and_process_image(settings, &data);
+    stat = load_and_process_image(settings, &data);
     switch(stat){
         case err: return 1;
         case h: return 0;
