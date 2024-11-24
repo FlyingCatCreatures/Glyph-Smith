@@ -5,7 +5,7 @@ install:
 	sudo cp asciiart /usr/local/bin/asciiart
 
 develop:
-	clang++ asciiart.cpp -o asciiart	clang++ asciiart.cpp -o asciiart
+	clang++ asciiart.cpp -o asciiart
 
 profile:
 	clang++ -g asciiart.cpp -o asciiart -fprofile-instr-generate -fcoverage-mapping
