@@ -6,6 +6,8 @@
 #include <vector>
 #include <algorithm>
 #include <unistd.h>
+#include <chrono>
+#include <thread>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -16,6 +18,7 @@ using namespace std;
 
 //Constants
 const string fontsizesFile = "charsizes.txt";
+const float framerate = 10.0;
 
 //Checks if a path is relative or absolute. If relative, appends it to current working directory path
 string get_full_image_path(const string& filename) 
@@ -42,6 +45,8 @@ const bool verboseDefault = false;
 const int no_of_ascii_default = 4;
 const bool invertDefault = false;
 const bool terminalDefault = false;
+const bool doOutputDefault = true;
+const float rotateSpeedDefault = 0.0f;
 
 string ascii_chars; //Palette of characters for art, sorted in order of decreasing brightness (gets reversed when invert is true)
 
@@ -54,8 +59,10 @@ struct config{
     int no_of_ascii;
     bool invert;
     bool terminal;
+    bool output;
     int resY;
     int channels;
+    float rotateSpeed;
 
     // Constructor to initialize the default values
     config(): 
@@ -65,7 +72,9 @@ struct config{
         verbose(verboseDefault),
         no_of_ascii(no_of_ascii_default),
         invert(invertDefault),
-        terminal(terminalDefault) {}
+        terminal(terminalDefault),
+        output(doOutputDefault),
+        rotateSpeed(rotateSpeedDefault) {}
 };
 
 //Return status of parse_args. 
@@ -79,15 +88,17 @@ enum status{
 void print_help() {
     cout << "Usage: ascii_art [options]\n"
          << "Options:\n"
-         << "  -h, --help               Show this help message and exit\n"
-         << "  -f, --file FILE          Input image file (default: "<< imagefileDefault <<")\n"
-         << "  -r, --res RES            Horizontal resolution of ASCII art (default: "<< resXDefault <<")\n"
-         << "  -o, --output FILE        Output ASCII art file (default: "<< outputDefault << ")\n"
-         << "  -v, --verbose            Do verbose logging (default: " << ((verboseDefault)?("true"):("false")) << ")\n"
-         << "  -#, --no_of_chars        Amount of ascii characters to use (default: "<< no_of_ascii_default <<")\n"
-         << "  -i, --invert             Inverts brightness values(default:"<< ((invertDefault)?("true"):("false")) << ")\n"
-         << "  -c, --chars              Ascii characters to use. Overrides default ascii character selection (default: none)\n"
-         << "  -t, --terminal           Output to terminal aswell as output file(default:"<< ((invertDefault)?("true"):("false")) <<")\n";
+         << "  -h,              --help                  Show this help message and exit\n"
+         << "  -f FILE,         --file FILE             Input image file (default: "<< imagefileDefault <<")\n"
+         << "  -w RES,          --width RES             Horizontal resolution of ASCII art in characters(default: "<< resXDefault <<")\n"
+         << "  -o FILE,         --output FILE           Output ASCII art file (default: "<< outputDefault << ")\n"
+         << "  -v,              --verbose               Do verbose logging (default: " << ((verboseDefault)?("true"):("false")) << ")\n"
+         << "  -#,              --no_of_chars           Amount of ascii characters to use (default: "<< no_of_ascii_default <<")\n"
+         << "  -i,              --invert                Inverts brightness values(default:"<< ((invertDefault)?("true"):("false")) << ")\n"
+         << "  -c,              --chars                 Ascii characters to use. Overrides default ascii character selection (default: none)\n"
+         << "  -t,              --terminal              Output to terminal aswell as output file(default:"<< ((invertDefault)?("true"):("false")) <<")\n"
+         << "  -r SPEED,        --rotate SPEED          Sets rotations per second to SPEED (default:"<< rotateSpeedDefault <<")\n"
+         << "                                                  - Also enables terminal output and disables file output\n";
     return;
 }
 
@@ -103,7 +114,7 @@ status parse_args(config &settings, int argc, char* argv[]) {
             if (i + 1 < argc) settings.filename = get_full_image_path(argv[++i]);
             else { cerr << "Error: No file specified after " << arg << endl; return err; }
 
-        } else if (arg == "--res" || arg == "-r") {
+        } else if (arg == "--width" || arg == "-w") {
             if (i + 1 < argc) settings.resX = stoi(argv[++i]);
             else { cerr << "Error: No resolution specified after " << arg << endl; return err; }
 
@@ -128,6 +139,11 @@ status parse_args(config &settings, int argc, char* argv[]) {
             if (i + 1 < argc) ascii_chars = argv[++i];
             else { cerr << "Error: No characters specified after " << arg << endl; return err; }
 
+        } else if(arg == "--rotate" || arg == "-r") {
+            if (i + 1 < argc) settings.rotateSpeed = stof(argv[++i]);
+            else { cerr << "Error: No speed specified after " << arg << endl; return err; }
+            settings.terminal= true;
+            settings.output = false;
         } else {
             cerr << "Error: Unknown argument " << arg << endl; return err;
         }
@@ -208,12 +224,10 @@ string figure_out_chars(int chars) {
 //Loads and processess image into 'data_out' according to 'settings'
 status load_and_process_image(config& settings, unsigned char** data_out) {
     int width, height, channels;
-    //const int comps = 1; // Grayscale
 
     string full_image_path = get_full_image_path(settings.filename);
 
     // Load image
-    //unsigned char* data_tmp = stbi_load(full_image_path.c_str(), &width, &height, &channels, comps);
     unsigned char* data_tmp = stbi_load(full_image_path.c_str(), &width, &height, &channels, 0);
 
     if (!data_tmp) {
@@ -295,25 +309,62 @@ status produce_ascii(config settings, unsigned char* data) {
             char ascii_char = ascii_chars[grayscale_value * ascii_chars.size() / 256];
 
             // Output ASCII character with color (ANSI escape code)
-            if (settings.terminal) {
-                cout << "\033[38;2;" << (int)r << ";" << (int)g << ";" << (int)b << "m" << ascii_char;
-            }
+            if (settings.terminal) cout << "\033[38;2;" << (int)r << ";" << (int)g << ";" << (int)b << "m" << ascii_char;
+            
 
             // Write the plain ASCII character to the output file (no color)
-            outFile << ascii_char;
+            if (settings.output) outFile << ascii_char;
         }
 
         // End of line for ASCII art
         if (settings.terminal) cout << "\033[0m" << endl; // Reset color and move to a new line
-        outFile << endl;
+        if (settings.output) outFile << endl;
     }
 
     // Cleanup
-    free(data);
     outFile.close();
+    
     if (settings.verbose) cout << "Colored ASCII art saved to '" << settings.output_file << "'!" << endl;
 
     return def;
+}
+
+unsigned char* rotate_image(const unsigned char* img, int width, int height, int channels, double theta) {
+    int new_width = width;
+    int new_height = height;
+    unsigned char* rotated_img = new unsigned char[new_width * new_height * channels];
+    
+    // Center of the image
+    double cx = width / 2.0;
+    double cy = height / 2.0;
+
+    // Precompute sine and cosine
+    double cos_theta = std::cos(theta);
+    double sin_theta = std::sin(theta);
+
+    // Initialize the new image to black (optional)
+    std::fill(rotated_img, rotated_img + new_width * new_height * channels, 0);
+
+    // Iterate over each pixel in the output image
+    for (int y = 0; y < new_height; ++y) {
+        for (int x = 0; x < new_width; ++x) {
+            // Map (x, y) in the new image back to the original image
+            double new_x = (x - cx) * cos_theta + (y - cy) * sin_theta + cx;
+            double new_y = -(x - cx) * sin_theta + (y - cy) * cos_theta + cy;
+
+            // Check if the coordinates are within bounds
+            int src_x = static_cast<int>(new_x);
+            int src_y = static_cast<int>(new_y);
+            if (src_x >= 0 && src_x < width && src_y >= 0 && src_y < height) {
+                for (int c = 0; c < channels; ++c) {
+                    rotated_img[(y * new_width + x) * channels + c] =
+                        img[(src_y * width + src_x) * channels + c];
+                }
+            }
+        }
+    }
+
+    return rotated_img;
 }
 
 int main(int argc, char* argv[]) {
@@ -341,13 +392,43 @@ int main(int argc, char* argv[]) {
         case h: return 0;
         case def: break;
     }
-    
-    stat = produce_ascii(settings, data);
-    switch(stat){
+
+    using namespace chrono;
+    if (settings.rotateSpeed > 0) {
+    double iterations_per_rotation = framerate / static_cast<double>(settings.rotateSpeed);
+    double rotation_per_iteration = 2.0 * M_PI / iterations_per_rotation;
+
+    for (double theta = 0; theta < 2.0 * M_PI; theta += rotation_per_iteration) {
+        steady_clock::time_point start = high_resolution_clock::now();
+        stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, theta));
+        
+        switch(stat) {
+            case err: return 1;
+            case h: return 0;
+            case def: break;
+        }
+
+        steady_clock::time_point end = high_resolution_clock::now();
+        std::this_thread::sleep_for(milliseconds(static_cast<int>(1000.0 / framerate)) - (start - end));
+    }
+
+    double final_theta = 2.0 * M_PI;
+    stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, final_theta));
+    switch(stat) {
         case err: return 1;
         case h: return 0;
         case def: break;
     }
-    
+
+} else {
+    stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
+    switch(stat) {
+        case err: return 1;
+        case h: return 0;
+        case def: break;
+    }
+}
+
+    free(data);
     return 0;
 }
