@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <chrono>
 #include <thread>
+#include <atomic>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -15,10 +16,11 @@
 #include "lib/stb_image_resize2.h"
 
 using namespace std;
+using namespace chrono;
 
 //Constants
 const string fontsizesFile = "charsizes.txt";
-const float framerate = 10.0;
+const float framerate = 20.0;
 
 //Checks if a path is relative or absolute. If relative, appends it to current working directory path
 string get_full_image_path(const string& filename) 
@@ -339,11 +341,11 @@ unsigned char* rotate_image(const unsigned char* img, int width, int height, int
     double cy = height / 2.0;
 
     // Precompute sine and cosine
-    double cos_theta = std::cos(theta);
-    double sin_theta = std::sin(theta);
+    double cos_theta = cos(theta);
+    double sin_theta = sin(theta);
 
     // Initialize the new image to black (optional)
-    std::fill(rotated_img, rotated_img + new_width * new_height * channels, 0);
+    fill(rotated_img, rotated_img + new_width * new_height * channels, 0);
 
     // Iterate over each pixel in the output image
     for (int y = 0; y < new_height; ++y) {
@@ -393,41 +395,39 @@ int main(int argc, char* argv[]) {
         case def: break;
     }
 
-    using namespace chrono;
     if (settings.rotateSpeed > 0) {
-    double iterations_per_rotation = framerate / static_cast<double>(settings.rotateSpeed);
-    double rotation_per_iteration = 2.0 * M_PI / iterations_per_rotation;
+        double iterations_per_rotation = framerate / static_cast<double>(settings.rotateSpeed);
+        double rotation_per_iteration = 2.0 * M_PI / iterations_per_rotation;
 
-    for (double theta = 0; theta < 2.0 * M_PI; theta += rotation_per_iteration) {
-        steady_clock::time_point start = high_resolution_clock::now();
-        stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, theta));
-        
+        for (double theta = 0; theta < 2.0 * M_PI; theta += rotation_per_iteration) {
+            steady_clock::time_point start = high_resolution_clock::now();
+            stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, theta));
+            switch(stat) {
+                case err: return 1;
+                case h: return 0;
+                case def: break;
+            }
+
+            steady_clock::time_point end = high_resolution_clock::now();
+            std::this_thread::sleep_for(milliseconds(static_cast<int>(1000.0 / framerate)) - (start - end));
+        }
+
+        double final_theta = 2.0 * M_PI;
+        stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, final_theta));
         switch(stat) {
             case err: return 1;
             case h: return 0;
             case def: break;
         }
 
-        steady_clock::time_point end = high_resolution_clock::now();
-        std::this_thread::sleep_for(milliseconds(static_cast<int>(1000.0 / framerate)) - (start - end));
+    } else {
+        stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
+        switch(stat) {
+            case err: return 1;
+            case h: return 0;
+            case def: break;
+        }
     }
-
-    double final_theta = 2.0 * M_PI;
-    stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, final_theta));
-    switch(stat) {
-        case err: return 1;
-        case h: return 0;
-        case def: break;
-    }
-
-} else {
-    stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
-    switch(stat) {
-        case err: return 1;
-        case h: return 0;
-        case def: break;
-    }
-}
 
     free(data);
     return 0;

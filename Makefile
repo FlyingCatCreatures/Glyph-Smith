@@ -5,4 +5,11 @@ install:
 	sudo cp asciiart /usr/local/bin/asciiart
 
 develop:
-	clang++ asciiart.cpp -o asciiart
+	clang++ asciiart.cpp -o asciiart	clang++ asciiart.cpp -o asciiart
+
+profile:
+	clang++ -g asciiart.cpp -o asciiart -fprofile-instr-generate -fcoverage-mapping
+	sudo cp asciiart /usr/local/bin/asciiart
+	#after running program run:
+	#llvm-profdata merge -sparse default.profraw -o default.profdata
+	#llvm-cov show --ignore-filename-regex='.*stb.*' ./asciiart -instr-profile=default.profdata
