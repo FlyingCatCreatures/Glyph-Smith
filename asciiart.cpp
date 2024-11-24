@@ -55,6 +55,7 @@ struct config{
     bool invert;
     bool terminal;
     int resY;
+    int channels;
 
     // Constructor to initialize the default values
     config(): 
@@ -207,12 +208,14 @@ string figure_out_chars(int chars) {
 //Loads and processess image into 'data_out' according to 'settings'
 status load_and_process_image(config& settings, unsigned char** data_out) {
     int width, height, channels;
-    const int comps = 1; // Grayscale
+    //const int comps = 1; // Grayscale
 
     string full_image_path = get_full_image_path(settings.filename);
 
     // Load image
-    unsigned char* data_tmp = stbi_load(full_image_path.c_str(), &width, &height, &channels, comps);
+    //unsigned char* data_tmp = stbi_load(full_image_path.c_str(), &width, &height, &channels, comps);
+    unsigned char* data_tmp = stbi_load(full_image_path.c_str(), &width, &height, &channels, 0);
+
     if (!data_tmp) {
         cerr << "Failed to load image: " << full_image_path << endl;
         return err;
@@ -220,18 +223,29 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
     if (settings.verbose) cout << "Image successfully loaded" << endl;
 
     // Compute new vertical while maintaining aspect ratio
-    settings.resY = static_cast<int>(settings.resX * (static_cast<float>(height) / width) * 0.45);
+    settings.resY = static_cast<int>(settings.resX * (static_cast<float>(height) / width) * 0.442);
+    settings.channels = channels;
+    //*data_out = (unsigned char*)malloc(settings.resX * settings.resY * comps);
+    *data_out = (unsigned char*)malloc(settings.resX * settings.resY * channels);
 
-    *data_out = (unsigned char*)malloc(settings.resX * settings.resY * comps);
-    if (!*data_out) {
-        cerr << "Failed to allocate memory for resized image." << endl;
-        stbi_image_free(data_tmp);
-        return err;
+
+    // Determine the pixel layout based on the number of channels
+    stbir_pixel_layout pixel_layout;
+    switch (channels) {
+        case 1: pixel_layout = STBIR_1CHANNEL; break;
+        case 2: pixel_layout = STBIR_2CHANNEL; break;
+        case 3: pixel_layout = STBIR_RGB; break;
+        case 4: pixel_layout = STBIR_RGBA; break;
+        default:
+            cerr << "Unsupported number of channels: " << channels << endl;
+            free(*data_out);
+            stbi_image_free(data_tmp);
+            return err;
     }
 
     // Resize the image
     stbir_resize(data_tmp, width, height, 0, *data_out, settings.resX, settings.resY, 0,
-                 STBIR_1CHANNEL, STBIR_TYPE_UINT8,
+                 pixel_layout, STBIR_TYPE_UINT8,
                  STBIR_EDGE_CLAMP, STBIR_FILTER_DEFAULT);
 
     if (settings.verbose) cout << "Image successfully resized" << endl;
@@ -242,7 +256,7 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
     return def;
 }
 
-status produce_ascii(config settings, unsigned char* data){
+status produce_ascii(config settings, unsigned char* data) {
     ofstream outFile(settings.output_file);
     if (!outFile.is_open()) {
         cerr << "Failed to open output file: " << settings.output_file << endl;
@@ -252,25 +266,55 @@ status produce_ascii(config settings, unsigned char* data){
 
     for (int i = 0; i < settings.resY; i++) {
         for (int j = 0; j < settings.resX; j++) {
+            // Calculate pixel index in the flattened data array
+            int pixel_index = (i * settings.resX + j) * settings.channels;
 
-            unsigned char pixel_value = data[i * settings.resX + j];
-            char ascii_char = ascii_chars[pixel_value * ascii_chars.size() / 256];
+            // Extract color components
+            unsigned char r = 0, g = 0, b = 0;
+            if (settings.channels == 1) {
+                // Grayscale image: replicate the value for RGB
+                r = g = b = data[pixel_index];
+            } else if (settings.channels >= 3) {
+                // RGB image
+                r = data[pixel_index];
+                g = data[pixel_index + 1];
+                b = data[pixel_index + 2];
+            } else {
+                cerr << "Unsupported number of channels: " << settings.channels << endl;
+                free(data);
+                outFile.close();
+                return err;
+            }
 
-            if(settings.terminal) cout << ascii_char;
+            // Compute grayscale value for ASCII character mapping
+            unsigned char grayscale_value = static_cast<unsigned char>(
+                0.299f * r + 0.587f * g + 0.114f * b
+            );
 
+            // Map grayscale value to an ASCII character
+            char ascii_char = ascii_chars[grayscale_value * ascii_chars.size() / 256];
+
+            // Output ASCII character with color (ANSI escape code)
+            if (settings.terminal) {
+                cout << "\033[38;2;" << (int)r << ";" << (int)g << ";" << (int)b << "m" << ascii_char;
+            }
+
+            // Write the plain ASCII character to the output file (no color)
             outFile << ascii_char;
         }
-        if(settings.terminal) cout << endl;
+
+        // End of line for ASCII art
+        if (settings.terminal) cout << "\033[0m" << endl; // Reset color and move to a new line
         outFile << endl;
     }
 
     // Cleanup
     free(data);
     outFile.close();
-    if (settings.verbose) cout << "ASCII art saved to '" << settings.output_file << "'!" << endl;
+    if (settings.verbose) cout << "Colored ASCII art saved to '" << settings.output_file << "'!" << endl;
 
     return def;
-}   
+}
 
 int main(int argc, char* argv[]) {
     // Load default parameters
