@@ -274,7 +274,6 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
 }
 
 status produce_ascii(config settings, unsigned char* data) {
-    ofstream outFile(settings.output_file);
     ostringstream buffer;
     ostringstream buffer2;
 
