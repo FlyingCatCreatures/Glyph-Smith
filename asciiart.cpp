@@ -20,7 +20,7 @@ using namespace chrono;
 
 //Constants
 const string fontsizesFile = "charsizes.txt";
-const float framerate = 10.0;
+const float framerate = 15.0;
 
 //Checks if a path is relative or absolute. If relative, appends it to current working directory path
 string get_full_image_path(const string& filename) 
@@ -49,7 +49,7 @@ const bool invertDefault = false;
 const bool terminalDefault = false;
 const bool doOutputDefault = true;
 const float rotateSpeedDefault = 0.0f;
-const int rotations = 10;
+const int rotations = 1;
 
 string ascii_chars; //Palette of characters for art, sorted in order of decreasing brightness (gets reversed when invert is true)
 
@@ -274,23 +274,20 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
 }
 
 status produce_ascii(config settings, unsigned char* data) {
+    static vector<string> previous_buffer; // Persistent buffer for the last ASCII art
     ostringstream buffer;
-    ostringstream buffer2;
+    vector<string> current_buffer; // Buffer for the current ASCII art
 
     for (int i = 0; i < settings.resY; i++) {
         string linebuff = "";
-        string linebuff2 = "";
         for (int j = 0; j < settings.resX; j++) {
-            // Calculate pixel index in the flattened data array
             int pixel_index = (i * settings.resX + j) * settings.channels;
 
             // Extract color components
             unsigned char r = 0, g = 0, b = 0;
             if (settings.channels == 1) {
-                // Grayscale image: replicate the value for RGB
                 r = g = b = data[pixel_index];
             } else if (settings.channels >= 3) {
-                // RGB image
                 r = data[pixel_index];
                 g = data[pixel_index + 1];
                 b = data[pixel_index + 2];
@@ -300,45 +297,61 @@ status produce_ascii(config settings, unsigned char* data) {
                 return err;
             }
 
-            // Compute grayscale value for ASCII character mapping
+            // Compute grayscale value
             unsigned char grayscale_value = static_cast<unsigned char>(
                 0.299f * r + 0.587f * g + 0.114f * b
             );
 
-            // Map grayscale value to an ASCII character
+            // Map grayscale value to ASCII character
             char ascii_char = ascii_chars[grayscale_value * ascii_chars.size() / 256];
 
-            // Append the colored ASCII character to the line buffer
+            // Add to the line buffer
             if (settings.terminal)
                 linebuff += "\033[38;2;" + to_string((int)r) + ";" +
-                                    to_string((int)g) + ";" +
-                                    to_string((int)b) + "m" + 
-                                    ascii_char;
-
-            // Write the plain ASCII character to the output file (no color)
-            if (settings.output) linebuff2 += ascii_char;
+                            to_string((int)g) + ";" +
+                            to_string((int)b) + "m" +
+                            ascii_char;
         }
         if (settings.terminal) buffer << linebuff << "\033[0m" << endl;
-        if (settings.output) buffer2 << linebuff2 << endl;
+        current_buffer.push_back(linebuff);
     }
 
+    if (settings.terminal) {
+        if (previous_buffer.empty()) {
+            // First run: Print the whole ASCII art
+            cout << "\033[2J\033[H" << buffer.str();
+        } else {
+            // Compare with previous buffer and only update differences
+            for (size_t i = 0; i < current_buffer.size(); i++) {
+                if (current_buffer[i] != previous_buffer[i] || i >= previous_buffer.size()) {
+                    // Move the cursor to the correct line
+                    cout << "\033[" << (i + 1) << ";1H" << current_buffer[i];
+                }
+            }
+        }
+        // Reset cursor at the end of the drawing
+        cout << "\033[0m" << endl;
+    }
 
-
-    if(settings.terminal) cout << buffer.str();
-
-    if(settings.output){ 
+    if (settings.output) {
         ofstream outFile(settings.output_file);
-        if (!outFile.is_open() && settings.output) {
+        if (!outFile.is_open()) {
             cerr << "Failed to open output file: " << settings.output_file << endl;
             free(data);
             return err;
         }
-
-        outFile << buffer2.str();
-
+        for (const auto& line : current_buffer) {
+            outFile << line << endl;
+        }
         outFile.close();
     }
-    if (settings.verbose) cout << "Colored ASCII art saved to '" << settings.output_file << "'!" << endl;
+
+    if (settings.verbose && settings.output) {
+        cout << "ASCII art saved to '" << settings.output_file << "'!" << endl;
+    }
+
+    // Update the previous buffer
+    previous_buffer = current_buffer;
 
     return def;
 }

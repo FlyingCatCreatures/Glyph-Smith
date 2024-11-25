@@ -110,9 +110,11 @@ int main(int argc, char* argv[]) {
     std::map<char, int> charValues;
     for (int i = 32; i < 127; i++) {
         char c = static_cast<char>(i);
-        int cov = coverage(fontPath, c);
-        if (cov >= 0) { // Exclude characters with errors
-            charValues[c] = cov;
+        if(c != '\\'){
+            int cov = coverage(fontPath, c);
+            if (cov >= 0) { // Exclude characters with errors
+                charValues[c] = cov;
+            }
         }
     }
 
