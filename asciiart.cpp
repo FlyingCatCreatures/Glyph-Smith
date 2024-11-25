@@ -274,13 +274,16 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
 
 status produce_ascii(config settings, unsigned char* data) {
     ofstream outFile(settings.output_file);
-    if (!outFile.is_open()) {
+    if (!outFile.is_open() && settings.output) {
         cerr << "Failed to open output file: " << settings.output_file << endl;
         free(data);
         return err;
     }
+    
+    vector<string> linebuff;
 
     for (int i = 0; i < settings.resY; i++) {
+        linebuff.push_back("");
         for (int j = 0; j < settings.resX; j++) {
             // Calculate pixel index in the flattened data array
             int pixel_index = (i * settings.resX + j) * settings.channels;
@@ -310,18 +313,27 @@ status produce_ascii(config settings, unsigned char* data) {
             // Map grayscale value to an ASCII character
             char ascii_char = ascii_chars[grayscale_value * ascii_chars.size() / 256];
 
-            // Output ASCII character with color (ANSI escape code)
-            if (settings.terminal) cout << "\033[38;2;" << (int)r << ";" << (int)g << ";" << (int)b << "m" << ascii_char;
-            
+            // Append the colored ASCII character to the line buffer
+            if (settings.terminal)
+                linebuff.at(i) += "\033[38;2;" + to_string((int)r) + ";" +
+                                    to_string((int)g) + ";" +
+                                    to_string((int)b) + "m" + 
+                                    ascii_char;
 
             // Write the plain ASCII character to the output file (no color)
             if (settings.output) outFile << ascii_char;
         }
 
-        // End of line for ASCII art
-        if (settings.terminal) cout << "\033[0m" << endl; // Reset color and move to a new line
+        // Write a newline to the output file
         if (settings.output) outFile << endl;
     }
+
+    if (settings.terminal)
+        for(int i=0; i<settings.resY; i++){
+            // Output the buffered line with color to the terminal
+            if (settings.terminal) cout << linebuff[i] << "\033[0m" << endl;
+        }
+    
 
     // Cleanup
     outFile.close();
@@ -398,7 +410,7 @@ int main(int argc, char* argv[]) {
     if (settings.rotateSpeed > 0) {
         double iterations_per_rotation = framerate / static_cast<double>(settings.rotateSpeed);
         double rotation_per_iteration = 2.0 * M_PI / iterations_per_rotation;
-
+        int sum = 0;
         for (double theta = 0; theta < 2.0 * M_PI; theta += rotation_per_iteration) {
             steady_clock::time_point start = high_resolution_clock::now();
             stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, theta));
@@ -409,16 +421,12 @@ int main(int argc, char* argv[]) {
             }
 
             steady_clock::time_point end = high_resolution_clock::now();
-            std::this_thread::sleep_for(milliseconds(static_cast<int>(1000.0 / framerate)) - (start - end));
+            sum+= duration_cast<microseconds>(end-start).count();
+            this_thread::sleep_for(milliseconds(static_cast<int>(1000.0 / framerate)) - (end - start));
         }
 
-        double final_theta = 2.0 * M_PI;
-        stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, final_theta));
-        switch(stat) {
-            case err: free(data); return 1;
-            case h: free(data); return 0;
-            case def: break;
-        }
+        stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
+        cout << "Average frametime: " << sum / iterations_per_rotation << " microseconds (" << sum / (1000*iterations_per_rotation)  << " ms)" << endl;
 
     } else {
         stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
