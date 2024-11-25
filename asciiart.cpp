@@ -20,7 +20,7 @@ using namespace chrono;
 
 //Constants
 const string fontsizesFile = "charsizes.txt";
-const float framerate = 20.0;
+const float framerate = 10.0;
 
 //Checks if a path is relative or absolute. If relative, appends it to current working directory path
 string get_full_image_path(const string& filename) 
@@ -49,6 +49,7 @@ const bool invertDefault = false;
 const bool terminalDefault = false;
 const bool doOutputDefault = true;
 const float rotateSpeedDefault = 0.0f;
+const int rotations = 10;
 
 string ascii_chars; //Palette of characters for art, sorted in order of decreasing brightness (gets reversed when invert is true)
 
@@ -274,16 +275,12 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
 
 status produce_ascii(config settings, unsigned char* data) {
     ofstream outFile(settings.output_file);
-    if (!outFile.is_open() && settings.output) {
-        cerr << "Failed to open output file: " << settings.output_file << endl;
-        free(data);
-        return err;
-    }
-    
-    vector<string> linebuff;
+    ostringstream buffer;
+    ostringstream buffer2;
 
     for (int i = 0; i < settings.resY; i++) {
-        linebuff.push_back("");
+        string linebuff = "";
+        string linebuff2 = "";
         for (int j = 0; j < settings.resX; j++) {
             // Calculate pixel index in the flattened data array
             int pixel_index = (i * settings.resX + j) * settings.channels;
@@ -301,7 +298,6 @@ status produce_ascii(config settings, unsigned char* data) {
             } else {
                 cerr << "Unsupported number of channels: " << settings.channels << endl;
                 free(data);
-                outFile.close();
                 return err;
             }
 
@@ -315,29 +311,34 @@ status produce_ascii(config settings, unsigned char* data) {
 
             // Append the colored ASCII character to the line buffer
             if (settings.terminal)
-                linebuff.at(i) += "\033[38;2;" + to_string((int)r) + ";" +
+                linebuff += "\033[38;2;" + to_string((int)r) + ";" +
                                     to_string((int)g) + ";" +
                                     to_string((int)b) + "m" + 
                                     ascii_char;
 
             // Write the plain ASCII character to the output file (no color)
-            if (settings.output) outFile << ascii_char;
+            if (settings.output) linebuff2 += ascii_char;
         }
-
-        // Write a newline to the output file
-        if (settings.output) outFile << endl;
+        if (settings.terminal) buffer << linebuff << "\033[0m" << endl;
+        if (settings.output) buffer2 << linebuff2 << endl;
     }
 
-    if (settings.terminal)
-        for(int i=0; i<settings.resY; i++){
-            // Output the buffered line with color to the terminal
-            if (settings.terminal) cout << linebuff[i] << "\033[0m" << endl;
-        }
-    
 
-    // Cleanup
-    outFile.close();
-    
+
+    if(settings.terminal) cout << buffer.str();
+
+    if(settings.output){ 
+        ofstream outFile(settings.output_file);
+        if (!outFile.is_open() && settings.output) {
+            cerr << "Failed to open output file: " << settings.output_file << endl;
+            free(data);
+            return err;
+        }
+
+        outFile << buffer2.str();
+
+        outFile.close();
+    }
     if (settings.verbose) cout << "Colored ASCII art saved to '" << settings.output_file << "'!" << endl;
 
     return def;
@@ -411,7 +412,7 @@ int main(int argc, char* argv[]) {
         double iterations_per_rotation = framerate / static_cast<double>(settings.rotateSpeed);
         double rotation_per_iteration = 2.0 * M_PI / iterations_per_rotation;
         int sum = 0;
-        for (double theta = 0; theta < 2.0 * M_PI; theta += rotation_per_iteration) {
+        for (double theta = 0; theta < rotations * 2.0 * M_PI; theta += rotation_per_iteration) {
             steady_clock::time_point start = high_resolution_clock::now();
             stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, theta));
             switch(stat) {
@@ -425,8 +426,8 @@ int main(int argc, char* argv[]) {
             this_thread::sleep_for(milliseconds(static_cast<int>(1000.0 / framerate)) - (end - start));
         }
 
-        stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
-        cout << "Average frametime: " << sum / iterations_per_rotation << " microseconds (" << sum / (1000*iterations_per_rotation)  << " ms)" << endl;
+        produce_ascii(settings, data); //Final frame, so that the last frame is always precisely upright
+        cout << "Average frametime: " << sum / (iterations_per_rotation*rotations) << " microseconds (" << sum / (1000*iterations_per_rotation * rotations)  << " ms)" << endl;
 
     } else {
         stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
