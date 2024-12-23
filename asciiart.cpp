@@ -34,7 +34,7 @@ string get_full_image_path(const string& filename)
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
         return string(cwd) + "/" + filename;
     } else {
-        cerr << "Error: Unable to get current working directory!" << endl;
+        cerr << "Error: Unable to get current working directory!" << '\n';
         return filename; // Fallback to default behavior
     }
 }
@@ -115,15 +115,15 @@ status parse_args(config &settings, int argc, char* argv[]) {
 
         } else if (arg == "--file" || arg == "-f") {
             if (i + 1 < argc) settings.filename = get_full_image_path(argv[++i]);
-            else { cerr << "Error: No file specified after " << arg << endl; return err; }
+            else { cerr << "Error: No file specified after " << arg << '\n'; return err; }
 
         } else if (arg == "--width" || arg == "-w") {
             if (i + 1 < argc) settings.resX = stoi(argv[++i]);
-            else { cerr << "Error: No resolution specified after " << arg << endl; return err; }
+            else { cerr << "Error: No resolution specified after " << arg << '\n'; return err; }
 
         } else if (arg == "--output" || arg == "-o") {
             if (i + 1 < argc) settings.output_file = "output/" + string(argv[++i]);
-            else { cerr << "Error: No output file specified after " << arg << endl; return err; }
+            else { cerr << "Error: No output file specified after " << arg << '\n'; return err; }
 
         } else if (arg == "--verbose" || arg == "-v") {
             settings.verbose = true;
@@ -136,19 +136,19 @@ status parse_args(config &settings, int argc, char* argv[]) {
 
         } else if (arg == "--no_of_chars" || arg == "-#") {
             if (i + 1 < argc) settings.no_of_ascii = stoi(argv[++i]);
-            else { cerr << "Error: No resolution specified after " << arg << endl; return err; }
+            else { cerr << "Error: No resolution specified after " << arg << '\n'; return err; }
 
         } else if (arg == "--chars" || arg == "-c") {
             if (i + 1 < argc) ascii_chars = argv[++i];
-            else { cerr << "Error: No characters specified after " << arg << endl; return err; }
+            else { cerr << "Error: No characters specified after " << arg << '\n'; return err; }
 
         } else if(arg == "--rotate" || arg == "-r") {
             if (i + 1 < argc) settings.rotateSpeed = stof(argv[++i]);
-            else { cerr << "Error: No speed specified after " << arg << endl; return err; }
+            else { cerr << "Error: No speed specified after " << arg << '\n'; return err; }
             settings.terminal= true;
             settings.output = false;
         } else {
-            cerr << "Error: Unknown argument " << arg << endl; return err;
+            cerr << "Error: Unknown argument " << arg << '\n'; return err;
         }
     }
     return def;
@@ -159,7 +159,7 @@ vector<pair<char, int> > read_char_coverage() {
     vector<pair<char, int> > res;
 
     ifstream infile(fontsizesFile);
-    if (!infile.is_open()) { cerr << fontsizesFile << " could not be opened." << endl; return res; }
+    if (!infile.is_open()) { cerr << fontsizesFile << " could not be opened." << '\n'; return res; }
     
     string line;
     while (getline(infile, line)) {
@@ -234,10 +234,10 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
     unsigned char* data_tmp = stbi_load(full_image_path.c_str(), &width, &height, &channels, 0);
 
     if (!data_tmp) {
-        cerr << "Failed to load image: " << full_image_path << endl;
+        cerr << "Failed to load image: " << full_image_path << '\n';
         return err;
     }
-    if (settings.verbose) cout << "Image successfully loaded" << endl;
+    if (settings.verbose) cout << "Image successfully loaded" << '\n';
 
     // Compute new vertical while maintaining aspect ratio
     settings.resY = static_cast<int>(settings.resX * (static_cast<float>(height) / width) * 0.442);
@@ -254,7 +254,7 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
         case 3: pixel_layout = STBIR_RGB; break;
         case 4: pixel_layout = STBIR_RGBA; break;
         default:
-            cerr << "Unsupported number of channels: " << channels << endl;
+            cerr << "Unsupported number of channels: " << channels << '\n';
             free(*data_out);
             stbi_image_free(data_tmp);
             return err;
@@ -265,7 +265,7 @@ status load_and_process_image(config& settings, unsigned char** data_out) {
                  pixel_layout, STBIR_TYPE_UINT8,
                  STBIR_EDGE_CLAMP, STBIR_FILTER_DEFAULT);
 
-    if (settings.verbose) cout << "Image successfully resized" << endl;
+    if (settings.verbose) cout << "Image successfully resized" << '\n';
 
     // Free original image data
     stbi_image_free(data_tmp);
@@ -292,7 +292,7 @@ status produce_ascii(config settings, unsigned char* data) {
                 g = data[pixel_index + 1];
                 b = data[pixel_index + 2];
             } else {
-                cerr << "Unsupported number of channels: " << settings.channels << endl;
+                cerr << "Unsupported number of channels: " << settings.channels << '\n';
                 free(data);
                 return err;
             }
@@ -312,7 +312,7 @@ status produce_ascii(config settings, unsigned char* data) {
                             to_string((int)b) + "m" +
                             ascii_char;
         }
-        if (settings.terminal) buffer << linebuff << "\033[0m" << endl;
+        if (settings.terminal) buffer << linebuff << "\033[0m" << '\n';
         current_buffer.push_back(linebuff);
     }
 
@@ -330,24 +330,24 @@ status produce_ascii(config settings, unsigned char* data) {
             }
         }
         // Reset cursor at the end of the drawing
-        cout << "\033[0m" << endl;
+        cout << "\033[0m" << '\n';
     }
 
     if (settings.output) {
         ofstream outFile(settings.output_file);
         if (!outFile.is_open()) {
-            cerr << "Failed to open output file: " << settings.output_file << endl;
+            cerr << "Failed to open output file: " << settings.output_file << '\n';
             free(data);
             return err;
         }
         for (const auto& line : current_buffer) {
-            outFile << line << endl;
+            outFile << line << '\n';
         }
         outFile.close();
     }
 
     if (settings.verbose && settings.output) {
-        cout << "ASCII art saved to '" << settings.output_file << "'!" << endl;
+        cout << "ASCII art saved to '" << settings.output_file << "'!" << '\n';
     }
 
     // Update the previous buffer
@@ -408,7 +408,7 @@ int main(int argc, char* argv[]) {
 
     if (ascii_chars.empty()) ascii_chars = figure_out_chars(settings.no_of_ascii);
 
-    if (settings.verbose) cout << "selected ascii character palette: " << ascii_chars << endl;
+    if (settings.verbose) cout << "selected ascii character palette: " << ascii_chars << '\n';
     
     if (settings.invert) reverse(ascii_chars.begin(), ascii_chars.end());
     
@@ -439,7 +439,7 @@ int main(int argc, char* argv[]) {
         }
 
         produce_ascii(settings, data); //Final frame, so that the last frame is always precisely upright
-        cout << "Average frametime: " << sum / (iterations_per_rotation*rotations) << " microseconds (" << sum / (1000*iterations_per_rotation * rotations)  << " ms)" << endl;
+        cout << "Average frametime: " << sum / (iterations_per_rotation*rotations) << " microseconds (" << sum / (1000*iterations_per_rotation * rotations)  << " ms)" << '\n';
 
     } else {
         stat = produce_ascii(settings, rotate_image(data, settings.resX, settings.resY, settings.channels, 0));
